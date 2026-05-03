@@ -1,110 +1,30 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import OpenAI from "openai";
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-const DEEPSEEK_API_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY;
-
-// --- Helper Functions ---
-const cleanResponse = (text) => {
-    // Remove markdown code blocks if present (```json ... ```)
-    return text.replace(/```json/g, "").replace(/```/g, "").trim();
-};
-
-const withRetry = async (fn, retries = 3, delay = 2000) => {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await fn();
-        } catch (error) {
-            const isTransient = error.message?.includes("503") || error.message?.includes("500") || error.message?.includes("high demand") || error.status === 429;
-            if (isTransient && i < retries - 1) {
-                console.warn(`LLM Service: Temporary error. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                continue;
-            }
-            throw error;
-        }
-    }
-};
-
-// --- Provider Clients ---
-
-// 1. Gemini
-const geminiClient = new GoogleGenerativeAI(GEMINI_API_KEY);
-const geminiModel = geminiClient.getGenerativeModel({
-    model: "gemini-flash-latest",
-    generationConfig: { responseMimeType: "application/json" },
-});
-
-// 2. OpenAI
-const openaiClient = OPENAI_API_KEY ? new OpenAI({
-    apiKey: OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true // Frontend-only demo requirement
-}) : null;
-
-// 3. Deepseek (OpenAI Compatible)
-const deepseekClient = DEEPSEEK_API_KEY ? new OpenAI({
-    baseURL: 'https://api.deepseek.com',
-    apiKey: DEEPSEEK_API_KEY,
-    dangerouslyAllowBrowser: true
-}) : null;
-
-
-// --- Strategies ---
-const OPENAI_MODEL = import.meta.env.VITE_OPENAI_MODEL || "gpt-5-nano";
-const DEEPSEEK_MODEL = import.meta.env.VITE_DEEPSEEK_MODEL || "deepseek-chat";
-
-// --- Strategies ---
-const strategies = {
-    gemini: {
-        generate: async (prompt) => {
-            const result = await geminiModel.generateContent(prompt);
-            const response = await result.response;
-            let text = response.text();
-            return JSON.parse(cleanResponse(text));
-        }
-    },
-    openai: {
-        generate: async (prompt) => {
-            if (!openaiClient) throw new Error("OpenAI API Key not configured in .env");
-            const completion = await openaiClient.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are a helpful educational assistant. Output strictly valid JSON." },
-                    { role: "user", content: prompt }
-                ],
-                model: OPENAI_MODEL,
-                response_format: { type: "json_object" },
-            });
-            return JSON.parse(cleanResponse(completion.choices[0].message.content));
-        }
-    },
-    deepseek: {
-        generate: async (prompt) => {
-            if (!deepseekClient) throw new Error("Deepseek API Key not configured in .env");
-            const completion = await deepseekClient.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are a helpful educational assistant. Output strictly valid JSON." },
-                    { role: "user", content: prompt }
-                ],
-                model: DEEPSEEK_MODEL,
-                response_format: { type: "json_object" },
-            });
-            return JSON.parse(cleanResponse(completion.choices[0].message.content));
-        }
-    }
-};
-
 let currentProvider = 'gemini';
+
+const generateFromBackend = async (prompt) => {
+    const response = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: currentProvider, prompt })
+    });
+    if (!response.ok) {
+        try {
+            const errJson = await response.json();
+            throw new Error(errJson.details || errJson.error || "Failed to generate AI content");
+        } catch (e) {
+            if (e.message !== "Failed to fetch") {
+                throw e;
+            }
+            let msg = await response.text();
+            throw new Error(`Backend AI Error: ${msg}`);
+        }
+    }
+    return response.json(); // The backend cleans and parses the JSON for us!
+};
 
 export const llmService = {
     setProvider(provider) {
-        if (!strategies[provider]) {
-            console.warn(`Provider ${provider} not supported. Fallback to gemini.`);
-            currentProvider = 'gemini';
-            return;
-        }
         currentProvider = provider;
-        console.log(`Switched to LLM Provider: ${provider}`);
+        console.log(`Switched to LLM Provider: ${provider} (Backend Proxy)`);
     },
 
     getCurrentProvider() {
@@ -116,7 +36,9 @@ export const llmService = {
       You are an expert educational advisor. 
       Generate a structured learning path for a student wanting to learn: "${query}".
       
-      Return the output as a JSON object with a key "milestones".
+      Return the output as a JSON object with TWO keys: "milestones" and "graphData".
+      
+      1. "milestones": an array of objects representing the linear curriculum steps.
       Each milestone should have:
       - id: unique string or number
       - title: name of the milestone
@@ -124,10 +46,15 @@ export const llmService = {
       - progress: 0
       - hasFinetuning: boolean (true if it's a advanced or specific niche topic)
       - content: brief introductory text for this milestone
-      
       Generate between 3 to 6 milestones.
+      
+      2. "graphData": A Directed Acyclic Graph (DAG) mapping the core concepts of this topic.
+      It must contain "nodes" and "edges" properly formatted for React Flow.
+      Nodes schema: [{ "id": "1", "type": "concept", "data": { "label": "Concept Name", "score": 0, "status": "active" }, "position": { "x": number, "y": number } }]
+      Edges schema: [{ "id": "e1-2", "source": "1", "target": "2", "animated": true }]
+      Make sure edges connect logically, and use coordinate logic to space nodes apart visually so they form a beautiful flowchart graph (e.g. cascading down or flowing left to right, spacing by at least 150-200px horizontally and 100px vertically). Use the exact string "concept" for the node type.
     `;
-        return withRetry(() => strategies[currentProvider].generate(prompt));
+        return generateFromBackend(prompt);
     },
 
     async generateMilestoneContent(milestone) {
@@ -143,34 +70,187 @@ export const llmService = {
       Return as a JSON object with a key "detailedContent".
       The value should be a string (markdown format is allowed).
     `;
-        return withRetry(() => strategies[currentProvider].generate(prompt));
+        return generateFromBackend(prompt);
     },
 
-    async getDoubtAnswer(question, context) {
-        const prompt = `
-      Student Question: "${question}"
-      Context: ${context}
-      
-      Answer the question concisely and helpfully as an AI tutor.
-      Return as a JSON object with a key "answer".
-    `;
-        return withRetry(() => strategies[currentProvider].generate(prompt));
+    async getDoubtAnswer(question) {
+        // Fallback for non-streaming components
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/api/ai/ask-rag', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({ provider: currentProvider, question })
+        });
+        
+        if (!response.ok) {
+            let msg = await response.text();
+            throw new Error(`RAG Query Error: ${msg}`);
+        }
+        return response.json(); 
     },
 
-    async getQuiz(milestoneContext, type) {
-        const { title, topics, content } = milestoneContext;
+    async *streamDoubtAnswer(question) {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/api/ai/stream-rag', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({ provider: currentProvider, question })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Stream request failed');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            yield decoder.decode(value, { stream: true });
+        }
+    },
+
+    async *streamGenericContent(prompt) {
+        const response = await fetch('/api/ai/stream-generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: currentProvider, prompt })
+        });
+        if (!response.ok) throw new Error('Stream request failed');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            yield decoder.decode(value, { stream: true });
+        }
+    },
+
+    async generateNextQuizQuestion(milestoneContext, type, pastHistory = [], userInstruction = "") {
+        const { title, topics, content, graphData } = milestoneContext;
+        
+        let graphContext = '';
+        if (graphData) {
+            try {
+                const parsed = typeof graphData === 'string' ? JSON.parse(graphData) : graphData;
+                if (parsed && parsed.nodes) {
+                    graphContext = `Available Concepts in Graph: ${JSON.stringify(parsed.nodes.map(n => ({id: n.id, label: n.data.label})))}`;
+                }
+            } catch(e) {}
+        }
+        
+        const pastContext = pastHistory.map((q, i) => `Q${i+1}: ${q.text} (Student got it ${q.isCorrect ? 'right' : 'wrong'})`).join('\n');
+
         const prompt = `
-      Generate 3 multiple choice questions for a quiz on the milestone titled: "${title}".
+      You are an expert tutor creating a dynamic quiz for the milestone titled: "${title}".
       Key topics: ${JSON.stringify(topics)}.
-      Content context: "${content ? content.substring(0, 1000) : 'General knowledge on this topic'}".
+      Content context: "${content ? content.substring(0, 1500) : 'General knowledge on this topic'}".
       
-      Type: ${type} (initial assessment or follow-up).
+      ${graphContext}
+      IMPORTANT: If "Available Concepts in Graph" is provided, the question MUST strongly target one of the specific concepts from that list.
       
-      The questions must be specific to the content provided above. Avoid generic questions.
+      Type of Quiz: ${type}.
       
-      Return as JSON object with a key "questions".
-      Each question: { id, text, options: [], correctAnswer, explanation }.
+      ${userInstruction ? `CRITICAL USER INSTRUCTION: "${userInstruction}"\nYou MUST adhere strictly to this instruction when formulating the question, tone, and options.` : ""}
+      
+      Past History of this session:
+      ${pastHistory.length > 0 ? "The student has answered the following questions:\n" + pastContext + "\n\nCRITICAL: DO NOT repeat any of these questions. If the student got previous questions wrong, generate a question targeting the same concept but phrased differently to reinforce learning. If they got it right, move to a harder concept or a different topic from the milestone." : "This is the first question. Start with a foundational concept."}
+      
+      Generate exactly ONE multiple choice question.
+      Return as JSON object with a key "question".
+      Format: { text: "Question text", options: ["A", "B", "C", "D"], correctAnswer: "exact string of correct option", explanation: "Why it is correct", targetConceptId: "the ID of the concept node this question tests (string) from the Available Concepts list if provided" }.
     `;
-        return withRetry(() => strategies[currentProvider].generate(prompt));
+        return generateFromBackend(prompt);
+    },
+
+    async adjustLearningPath(currentMilestones, adjustmentInstruction) {
+        const prompt = `
+      You are an expert educational advisor.
+      The student is currently following this learning path with these milestones:
+      ${JSON.stringify(currentMilestones, null, 2)}
+      
+      The student has requested to change their learning direction: "${adjustmentInstruction}".
+      
+      IMPORTANT RULE: You MUST keep ALL existing milestones (including incomplete ones) and append or insert the new content based on the adjustment instruction, UNLESS the user explicitly mentions removing, replacing, or skipping existing ones.
+      
+      Return the output as a JSON object with a key "milestones".
+      Each milestone should adhere to the same schema:
+      - id: unique string or number (preserve existing ids if keeping a milestone)
+      - title: name of the milestone
+      - topics: array of subtopics
+      - progress: 0 (or 100 if preserving a previously completed milestone)
+      - completed: boolean (true if preserving a previously completed milestone)
+      - hasFinetuning: boolean
+      - content: brief introductory text
+    `;
+        return generateFromBackend(prompt);
+    },
+
+    async personalizeContent(selectedText, instruction, fullContext) {
+        const prompt = `
+      You are an expert tutor. The student selected this text from their lesson:
+      "${selectedText}"
+      
+      Here is the full lesson context:
+      "${fullContext}"
+      
+      Student's instruction to change the text:
+      "${instruction}"
+      
+      Please rewrite the selected text according to the student's instruction.
+      To ensure we replace the correct formatting, please extract the EXACT substring from the "full lesson context" that corresponds to the selected text, including any markdown formatting like ** or ## or newlines.
+      
+      Return as a JSON object with two keys:
+      - "originalTextToReplace": The exact literal string from the context to be replaced.
+      - "replacementText": The new rewritten text.
+    `;
+        return generateFromBackend(prompt);
+    },
+
+    async visualizeExplanation(explanation, instruction = "") {
+        const instructionText = instruction ? `Student's specific instruction for the diagram: "${instruction}"` : "";
+        const prompt = `
+      Convert the following educational explanation into a comprehensive Mermaid.js diagram (e.g. flowchart TD, mindmap).
+      Make sure to use strict valid Mermaid syntax.
+      ${instructionText}
+      
+      CRITICAL MERMAID SYNTAX RULES:
+      1. Node IDs MUST be simple alphanumeric without special characters (e.g., A, B, C).
+      2. If node labels contain spaces, brackets, or special characters, you MUST wrap the label in double quotes (e.g., A["Focuses on The Big Picture"]).
+      3. DO NOT put unescaped double quotes inside of string labels. Use single quotes instead if quoting is necessary inside the label (e.g., A["Focuses on 'The Big Picture'"]).
+      4. DO NOT use characters like -, +, or parenthesis inside node IDs, only in the quoted labels.
+      5. Output ONLY the raw Mermaid code block.
+      
+      Explanation text:
+      "${explanation}"
+      
+      Return as a JSON object with a key "mermaidCode" containing the raw mermaid code string.
+    `;
+        return generateFromBackend(prompt);
+    },
+
+    async generateRCA(graphData) {
+        const prompt = `
+      You are an expert educational advisor analyzing a student's Concept Gap Map.
+      Here is the raw graph data showing concepts, their proficiency scores (0-100), and dependencies (edges):
+      ${JSON.stringify(graphData)}
+      
+      Look for patterns where a student is struggling (low score, typically < 60) on an advanced concept, but the root cause is actually a prerequisite concept (a source node pointing to it) that also has a low score.
+      If all scores are 0, just give a general encouraging starting advice suggesting where to begin.
+      
+      Return as a JSON object with two keys:
+      - "insight": A 1-2 sentence HTML string describing the root cause pattern detected. Use <strong> tags to highlight concept names. Example: "You're struggling with <strong>Backpropagation</strong>, but the root cause is <strong>Chain Rule</strong>."
+      - "recommendation": A 1-2 sentence HTML string with actionable advice based on the graph. Example: "Spend 10 minutes reviewing <strong>Chain Rule</strong> fundamentals first."
+    `;
+        return generateFromBackend(prompt);
     }
 };
