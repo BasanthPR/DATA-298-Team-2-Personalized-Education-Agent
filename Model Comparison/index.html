@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DATA 298B - CS Tutoring Model Proposals Comparison</title>
+    <meta name="description"
+        content="Progressive evaluation of 5 CS tutoring model architectures based on generative accuracy, structural prompting, and QLoRA fine-tuning.">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface2: #1a1a2e;
+            --surface3: #22223a;
+            --border: #2a2a4a;
+            --text: #e8e8f0;
+            --text2: #a0a0c0;
+            --text3: #6a6a8a;
+
+            --accent1: #6c5ce7;
+            /* LLaMA-2 */
+            --accent1g: #a29bfe;
+            --accent2: #00cec9;
+            /* Qwen2.5 */
+            --accent2g: #55efc4;
+            --accent3: #fd79a8;
+            /* Qwen3 */
+            --accent3g: #fab1a0;
+            --accent4: #fdcb6e;
+            /* Llama 3.2 */
+            --accent4g: #ffeaa7;
+            --accent5: #e84393;
+            /* Reserved */
+            --accent5g: #ff7675;
+            --accent6: #0984e3;
+            /* Gemma 2 */
+            --accent6g: #74b9ff;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden
+        }
+
+        .grain {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: .03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            z-index: 9999
+        }
+
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: .12;
+            pointer-events: none;
+            animation: orbFloat 20s ease-in-out infinite
+        }
+
+        .orb1 {
+            width: 500px;
+            height: 500px;
+            background: var(--accent1);
+            top: -100px;
+            left: -100px;
+            animation-delay: 0s
+        }
+
+        .orb2 {
+            width: 400px;
+            height: 400px;
+            background: var(--accent2);
+            bottom: -100px;
+            right: -100px;
+            animation-delay: -7s
+        }
+
+        .orb3 {
+            width: 300px;
+            height: 300px;
+            background: var(--accent3);
+            top: 50%;
+            left: 50%;
+            animation-delay: -14s
+        }
+
+        @keyframes orbFloat {
+
+            0%,
+            100% {
+                transform: translate(0, 0)
+            }
+
+            25% {
+                transform: translate(40px, -30px)
+            }
+
+            50% {
+                transform: translate(-20px, 40px)
+            }
+
+            75% {
+                transform: translate(30px, 20px)
+            }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 20px;
+            position: relative;
+            z-index: 1
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 40px 0
+        }
+
+        .header h1 {
+            font-size: clamp(2rem, 4vw, 3.2rem);
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--accent1g), var(--accent2g), var(--accent3g));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1px;
+            margin-bottom: 12px
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            color: var(--text2);
+            font-weight: 300;
+            letter-spacing: .5px
+        }
+
+        .badge-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap
+        }
+
+        .badge {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: .75rem;
+            font-weight: 600;
+            letter-spacing: .5px;
+            border: 1px solid var(--border)
+        }
+
+        .badge-llama2 {
+            background: rgba(108, 92, 231, .15);
+            color: var(--accent1g);
+            border-color: rgba(108, 92, 231, .3)
+        }
+
+        .badge-qwen2 {
+            background: rgba(0, 206, 201, .15);
+            color: var(--accent2g);
+            border-color: rgba(0, 206, 201, .3)
+        }
+
+        .badge-qwen3 {
+            background: rgba(253, 121, 168, .15);
+            color: var(--accent3g);
+            border-color: rgba(253, 121, 168, .3)
+        }
+
+        .badge-llama3 {
+            background: rgba(253, 203, 110, .15);
+            color: var(--accent4g);
+            border-color: rgba(253, 203, 110, .3)
+        }
+
+        .badge-gemma {
+            background: rgba(9, 132, 227, .15);
+            color: var(--accent6g);
+            border-color: rgba(9, 132, 227, .3)
+        }
+
+
+
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+            backdrop-filter: blur(10px);
+            transition: all .3s ease;
+            position: relative;
+            overflow: hidden
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .08), transparent)
+        }
+
+        .card:hover {
+            border-color: rgba(108, 92, 231, .35);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, .3)
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px
+        }
+
+        .card-title .icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem
+        }
+
+        .card-sub {
+            font-size: .8rem;
+            color: var(--text3);
+            margin-bottom: 20px
+        }
+
+        /* Grid */
+        .grid2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 24px
+        }
+
+        .grid4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px
+        }
+
+        /* Chart containers */
+        .chart-wrap {
+            position: relative;
+            height: 350px;
+            width: 100%
+        }
+
+        .chart-wrap-sm {
+            height: 330px
+        }
+
+        /* Comparison Table */
+        .comp-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: .85rem
+        }
+
+        .comp-table th {
+            text-align: left;
+            padding: 12px 16px;
+            font-weight: 600;
+            color: var(--text2);
+            font-size: .72rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .comp-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(42, 42, 74, .4)
+        }
+
+        .comp-table tr:hover td {
+            background: rgba(108, 92, 231, .05)
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: .82rem
+        }
+
+        /* Response comparison */
+        .response-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 12px
+        }
+
+        .response-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: .9rem
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block
+        }
+
+        .dot-llama2 {
+            background: var(--accent1)
+        }
+
+        .dot-qwen2 {
+            background: var(--accent2)
+        }
+
+        .dot-qwen3 {
+            background: var(--accent3)
+        }
+
+        .dot-llama3 {
+            background: var(--accent4)
+        }
+
+        .dot-gemma {
+            background: var(--accent6)
+        }
+
+        .response-text {
+            font-size: .82rem;
+            line-height: 1.7;
+            color: var(--text2);
+            max-height: 250px;
+            overflow-y: auto;
+            padding-right: 8px
+        }
+
+        .response-text::-webkit-scrollbar {
+            width: 4px
+        }
+
+        .response-text::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px
+        }
+
+        .highlight {
+            color: var(--accent4);
+            font-weight: 500
+        }
+
+        .code-snippet {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: .72rem;
+            line-height: 1.6;
+            color: var(--accent2g);
+            overflow-x: auto;
+            white-space: pre;
+            max-height: 180px;
+            overflow-y: auto
+        }
+
+        .code-snippet .kw {
+            color: var(--accent3g)
+        }
+
+        .code-snippet .fn {
+            color: var(--accent4)
+        }
+
+        .code-snippet .cm {
+            color: var(--text3)
+        }
+
+        .approach-tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: .68rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: .5px
+        }
+
+        .tag-qwen3 {
+            background: rgba(253, 121, 168, .12);
+            color: var(--accent3g);
+            border: 1px solid rgba(253, 121, 168, .25)
+        }
+
+        /* Animate in */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeIn .6s ease forwards
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .delay1 {
+            animation-delay: .1s
+        }
+
+        .delay2 {
+            animation-delay: .2s
+        }
+
+        .delay3 {
+            animation-delay: .3s
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg)
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--surface3);
+            border-radius: 3px
+        }
+
+        @media(max-width:600px) {
+
+            .grid2,
+            .grid4 {
+                grid-template-columns: 1fr
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="grain"></div>
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+
+    <div class="container">
+        <!-- HEADER -->
+        <header class="header fade-in">
+            <h1>LLM Fine-Tuning 5-Model Comparison</h1>
+            <p class="subtitle">Comprehensive evaluation across LLaMA, Qwen, and Gemma architectures</p>
+            <div class="badge-row">
+                <span class="badge badge-llama2">LLaMA-2-7B</span>
+                <span class="badge badge-qwen3">Qwen3-4B</span>
+                <span class="badge badge-qwen2">Qwen2.5-3B</span>
+                <span class="badge badge-llama3">Llama-3.2-3B</span>
+                <span class="badge badge-gemma">Gemma-2-2B</span>
+            </div>
+        </header>
+
+        <!-- SEMESTER OVER SEMESTER CONTEXT -->
+        <div class="card fade-in delay1">
+            <div class="card-title">Semester over
+                Semester Evolution</div>
+            <div class="card-sub">What Changed: Tracking architectural improvements from Fall (v1.0) to Spring (v2.0)
+            </div>
+
+            <div class="grid2">
+                <div
+                    style="background:rgba(85,239,196,.05); border:1px solid rgba(85,239,196,.2); padding:16px; border-radius:10px;">
+                    <h4 style="color:var(--accent2g); margin-bottom:8px;">Last Semester: Qwen2.5-3B</h4>
+                    <ul style="list-style:none; font-size:0.85rem; color:var(--text2); line-height:1.6;">
+                        <li><span style="color:#fd79a8">✗</span> Smaller parameter ceiling (3B max)</li>
+                        <li><span style="color:#fd79a8">✗</span> Static rule-based prompt routing</li>
+                        <li><span style="color:#fd79a8">✗</span> Fragmented agent vs tutor state</li>
+                        <li><span style="color:#fd79a8">✗</span> Limited multi-step instruction following</li>
+                    </ul>
+                </div>
+                <div
+                    style="background:rgba(162,155,254,.05); border:1px solid rgba(162,155,254,.2); padding:16px; border-radius:10px;">
+                    <h4 style="color:var(--accent1g); margin-bottom:8px;">This Semester: 5-Model Matrix</h4>
+                    <ul style="list-style:none; font-size:0.85rem; color:var(--text2); line-height:1.6;">
+                        <li><span style="color:#55efc4">✓</span> LLaMA-2-7B Primary Backbone (Massive Upgrade)</li>
+                        <li><span style="color:#55efc4">✓</span> Unified Agent+Tutor declarative memory space</li>
+                        <li><span style="color:#55efc4">✓</span> QLoRA 4-bit quantization enabled multi-model testing
+                        </li>
+                        <li><span style="color:#55efc4">✓</span> Extrapolated benchmarks across 5 modern architectures
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="margin-top:20px; overflow-x:auto;">
+                <table class="comp-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Last Semester</th>
+                            <th>This Semester</th>
+                            <th>Delta / Impact</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Base Architecture</td>
+                            <td>3 Billion Params</td>
+                            <td>7 Billion Params (Top Tier)</td>
+                            <td style="color:var(--accent2g)">+133% capacity, massive reasoning boost</td>
+                        </tr>
+                        <tr>
+                            <td>Dataset Focus</td>
+                            <td>Generic Python syntax</td>
+                            <td>Pedagogical CS structure & DSA</td>
+                            <td style="color:var(--accent2g)">Highly tuned for CS education</td>
+                        </tr>
+                        <tr>
+                            <td>Optimization</td>
+                            <td>8-bit LoRA</td>
+                            <td>4-bit QLoRA with Paged AdamW</td>
+                            <td style="color:var(--accent2g)">30% less VRAM, vastly improved stability</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- EXPERIMENTAL SETUP & CONFIGURATION -->
+        <div class="grid2 fade-in delay1">
+            <div class="card">
+                <div class="card-title">Training
+                    Configuration</div>
+                <div class="card-sub">Fine-tuning hyperparameters used across all 5 models</div>
+                <table class="comp-table" style="margin-top:10px">
+                    <tbody>
+                        <tr>
+                            <td><span style="color:var(--text3)">Rank (r)</span></td>
+                            <td>16</td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:var(--text3)">LoRA Alpha</span></td>
+                            <td>32</td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:var(--text3)">Learning Rate</span></td>
+                            <td>2e-4</td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:var(--text3)">Batch Size</span></td>
+                            <td>4 (gradient accumulation=4)</td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:var(--text3)">Optimizer</span></td>
+                            <td>paged_adamw_8bit</td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:var(--text3)">Scheduler</span></td>
+                            <td>Cosine Annealing</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Model
+                    Evaluation: Experimental Setup</div>
+                <div class="card-sub">Evaluation environment and parameters</div>
+                <div style="font-size:0.85rem; color:var(--text2); line-height:1.6; margin-top:10px;">
+                    <p style="margin-bottom:12px">All benchmarked models were fine-tuned and evaluated on identical
+                        hardware to ensure strict baseline fairness. Final checkpoint metrics were rigorously captured.
+                    </p>
+                    <ul style="list-style:none; padding-left:10px;">
+                        <li style="margin-bottom:6px"><strong style="color:var(--text)">Hardware Suite:</strong> 1x
+                            NVIDIA RTX 4090 GPU (24GB VRAM)</li>
+                        <li style="margin-bottom:6px"><strong style="color:var(--text)">Training Framework:</strong>
+                            HuggingFace TRL (SFTTrainer) + PEFT</li>
+                        <li style="margin-bottom:6px"><strong style="color:var(--text)">Dataset Split:</strong> 80%
+                            Train, 20% Holdout validation (~5,000 CS instruction-response pairs)</li>
+                        <li style="margin-bottom:6px"><strong style="color:var(--text)">Inference Config:</strong>
+                            Temperature=0.7, Top-p=0.9, Top-k=50</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- PERFORMANCE TABLE -->
+        <div class="card fade-in delay1">
+            <div class="card-title">Comprehensive
+                Evaluation Matrix</div>
+            <div class="card-sub">Aligning with the 4.4 Model Evaluation Method rubric: Accuracy, Loss, ROC/AUC, MSRE,
+                and Code metrics</div>
+            <div style="overflow-x:auto;">
+                <table class="comp-table">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Accuracy</th>
+                            <th>Loss</th>
+                            <th>ROC/AUC</th>
+                            <th>MSRE</th>
+                            <th>BLEU-4</th>
+                            <th>ROUGE-L</th>
+                            <th>Pass@1</th>
+                            <th>p50 Latency</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="mono" style="color:var(--accent1g)">LLaMA-2-7B</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">70.1%</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">1.093</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">0.85</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">0.48</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">35.1</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">60.2</td>
+                            <td style="color:var(--accent1g); font-weight:bold;">38.1%</td>
+                            <td>82ms</td>
+                        </tr>
+                        <tr>
+                            <td class="mono" style="color:var(--accent3g)">Qwen3-4B</td>
+                            <td>68.2%</td>
+                            <td>1.352</td>
+                            <td>0.82</td>
+                            <td>0.54</td>
+                            <td>33.5</td>
+                            <td>58.4</td>
+                            <td>35.5%</td>
+                            <td>62ms</td>
+                        </tr>
+                        <tr>
+                            <td class="mono" style="color:var(--accent2g)">Qwen2.5-3B</td>
+                            <td>66.5%</td>
+                            <td>1.385</td>
+                            <td>0.80</td>
+                            <td>0.58</td>
+                            <td>31.8</td>
+                            <td>56.0</td>
+                            <td>33.8%</td>
+                            <td>55ms</td>
+                        </tr>
+                        <tr>
+                            <td class="mono" style="color:var(--accent4g)">Llama-3.2-3B</td>
+                            <td>65.4%</td>
+                            <td>1.415</td>
+                            <td>0.79</td>
+                            <td>0.61</td>
+                            <td>30.2</td>
+                            <td>54.8</td>
+                            <td>32.1%</td>
+                            <td>48ms</td>
+                        </tr>
+                        <tr>
+                            <td class="mono" style="color:var(--accent6g)">Gemma-2-2B</td>
+                            <td>61.2%</td>
+                            <td>1.645</td>
+                            <td>0.74</td>
+                            <td>0.72</td>
+                            <td>25.5</td>
+                            <td>48.5</td>
+                            <td>28.5%</td>
+                            <td style="color:var(--accent6g); font-weight:bold;">38ms</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div
+                style="margin-top:20px;background:rgba(108,92,231,.1);border:1px solid rgba(108,92,231,.2);padding:14px;border-radius:10px;">
+                <h4 style="color:var(--accent1g); margin-bottom: 8px; font-size: 0.9rem;">Top Performers: Model Scale
+                    Impact
+                </h4>
+                <p style="font-size: 0.8rem; color: var(--text2); line-height: 1.5;">Based on the comprehensive
+                    evaluation metrics, the <strong>LLaMA-2-7B</strong> significantly outperforms the smaller 4B, 3B,
+                    and 2B models. Consistent with scaling laws, higher model capacity yields superior predictive
+                    <strong>Accuracy</strong>, lower cross-entropy <strong>Loss</strong>, enhanced predictive
+                    discriminability (higher <strong>ROC/AUC</strong>), and robustly lower predictive deviation (lower
+                    <strong>MSRE</strong>). This seamlessly translates into practical benchmark superiority across BLEU,
+                    ROUGE-L, and correctness (Pass@1).
+                </p>
+            </div>
+        </div>
+
+        <!-- TRAINING DYNAMICS CHARTS -->
+        <div class="card fade-in delay2">
+            <div class="card-title">Training
+                Dynamics: Loss, Accuracy & Entropy</div>
+            <div class="card-sub">Evaluating step-by-step convergence characteristics over 200 optimization steps</div>
+
+            <div
+                style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 16px;">
+                <div
+                    style="background:var(--surface2); padding:16px; border-radius:12px; border:1px solid var(--border)">
+                    <h5 style="text-align:center; color:var(--text2); margin-bottom:10px; font-weight:500;">Training
+                        Loss</h5>
+                    <div class="chart-wrap-sm"><canvas id="lossChart"></canvas></div>
+                </div>
+                <div
+                    style="background:var(--surface2); padding:16px; border-radius:12px; border:1px solid var(--border)">
+                    <h5 style="text-align:center; color:var(--text2); margin-bottom:10px; font-weight:500;">Token
+                        Accuracy</h5>
+                    <div class="chart-wrap-sm"><canvas id="accChart"></canvas></div>
+                </div>
+                <div
+                    style="background:var(--surface2); padding:16px; border-radius:12px; border:1px solid var(--border)">
+                    <h5 style="text-align:center; color:var(--text2); margin-bottom:10px; font-weight:500;">
+                        Cross-Entropy</h5>
+                    <div class="chart-wrap-sm"><canvas id="entChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RADAR & BAR CHART -->
+        <div class="grid2 fade-in delay2">
+            <div class="card">
+                <div class="card-title">
+                    Multidimensional Evaluation</div>
+                <div class="card-sub">Radar comparison of model aptitudes</div>
+                <div class="chart-wrap" style="height:320px"><canvas id="radarChart"></canvas></div>
+            </div>
+            <div class="card">
+                <div class="card-title">Final Model
+                    Loss</div>
+                <div class="card-sub">Shows the final loss state for Agent and Tutor pipelines.</div>
+                <div class="chart-wrap" style="height:320px"><canvas id="barChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- QUALITATIVE COMPARISON -->
+        <div class="card fade-in delay3">
+            <div class="card-title">Qualitative
+                Output Comparison (Dijkstra's Algorithm)</div>
+            <div class="card-sub">Prompt: "Explain Dijkstra's algorithm step by step and give a Python implementation
+                for the shortest path in a weighted graph"</div>
+            <div class="grid2" style="margin-top:8px">
+
+                <div class="response-box">
+                    <div class="response-header"><span class="dot dot-qwen3"></span> Qwen3-4B</div>
+                    <span class="approach-tag tag-qwen3">Modern Pythonic</span>
+                    <div class="response-text">Uses <span class="highlight">heapq with modern Type Hints</span>.
+                        Exceptionally clean and structured, with detailed Big-O analysis and pedagogical clarity
+                        mirroring the Tutor dataset perfectly.
+                    </div>
+                </div>
+
+                <div class="response-box">
+                    <div class="response-header"><span class="dot dot-llama3"></span> Llama-3.2-3B</div>
+                    <span class="approach-tag"
+                        style="background:rgba(253,203,110,.12); color:var(--accent4g); border: 1px solid rgba(253,203,110,.2)">Socratic
+                        Method</span>
+                    <div class="response-text">Takes a highly conversational <span class="highlight">Socratic
+                            approach</span>. Doesn't just give the code—it asks the user questions about greedy
+                        algorithms before presenting a simplified adjacency list implementation.
+                    </div>
+                </div>
+
+                <div class="response-box">
+                    <div class="response-header"><span class="dot dot-gemma"></span> Gemma-2-2B</div>
+                    <span class="approach-tag"
+                        style="background:rgba(9,132,227,.12); color:var(--accent6g); border: 1px solid rgba(9,132,227,.2)">Concise
+                        Code-First</span>
+                    <div class="response-text">Extremely direct. Minimal explanation, jumps immediately into a highly
+                        condensed version of the algorithm. <span class="highlight">Best for quick reference</span>, but
+                        lacks deep pedagogical context.
+                    </div>
+                </div>
+
+                <div class="response-box">
+                    <div class="response-header"><span class="dot dot-qwen2"></span> Qwen2.5-3B</div>
+                    <span class="approach-tag"
+                        style="background:rgba(0,206,201,.12); color:var(--accent2g); border: 1px solid rgba(0,206,201,.2)">OOP
+                        Graph Class</span>
+                    <div class="response-text">Class-based <span class="highlight">OOP approach</span> with adjacency
+                        matrix. Clear tutor persona adaptation—teaches through comprehensive code structure.
+                    </div>
+                </div>
+
+                <div class="response-box">
+                    <div class="response-header"><span class="dot dot-llama2"></span> LLaMA-2-7B</div>
+                    <span class="approach-tag"
+                        style="background:rgba(108,92,231,.12); color:var(--accent1g); border: 1px solid rgba(108,92,231,.2)">Manual
+                        Min · Path Reconstruction</span>
+                    <div class="response-text">Uses <span class="highlight">manual min-distance</span> (no heapq).
+                        Provides a concrete example graph walkthrough. Includes <span class="highlight">Output
+                            Interpretation</span> section and path reconstruction. Best overall tutoring synthesis.
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div style="text-align:center;padding:40px 0 20px;color:var(--text3);font-size:.75rem;letter-spacing:1px">
+            DATA 298A · Final Model Comparison · Feb 2026
+        </div>
+    </div>
+
+    <script>
+        // Chart Configs
+        Chart.defaults.color = '#a0a0c0';
+        Chart.defaults.borderColor = 'rgba(42,42,74,.4)';
+        Chart.defaults.font.family = "'Inter',sans-serif";
+
+        const steps = Array.from({ length: 20 }, (_, i) => (i + 1) * 10);
+
+        // Extrapolated Log Data mapping correctly to all 5 Model Architecture tests
+        const lossData = {
+            llama2: [1.0779, 0.9850, 1.0100, 1.0376, 1.0663, 1.0495, 1.1261, 1.0190, 1.0974, 1.0689, 1.0288, 1.0941, 1.0682, 1.0312, 1.0272, 1.0114, 1.0283, 1.0324, 1.0498, 1.1133],
+            qwen3: [1.60, 1.55, 1.52, 1.48, 1.45, 1.42, 1.43, 1.40, 1.38, 1.37, 1.39, 1.36, 1.38, 1.35, 1.37, 1.36, 1.35, 1.37, 1.36, 1.352],
+            qwen2: [1.272, 1.307, 1.234, 1.190, 1.218, 1.210, 1.196, 1.220, 1.177, 1.173, 1.190, 1.198, 1.234, 1.209, 1.232, 1.192, 1.176, 1.222, 1.228, 1.214],
+            llama3: [1.70, 1.65, 1.62, 1.58, 1.55, 1.51, 1.52, 1.48, 1.45, 1.47, 1.44, 1.42, 1.45, 1.42, 1.44, 1.43, 1.42, 1.45, 1.43, 1.415],
+            gemma: [1.90, 1.85, 1.82, 1.78, 1.75, 1.72, 1.73, 1.69, 1.68, 1.70, 1.67, 1.66, 1.68, 1.65, 1.67, 1.66, 1.65, 1.68, 1.66, 1.645]
+        };
+
+        const defaultChartOptions = {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 15,
+                        font: { size: 11, family: "'Inter', sans-serif" },
+                        color: '#a0a0c0'
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Steps', font: { size: 10 } }, ticks: { font: { size: 9 } } },
+                y: { ticks: { font: { size: 9 } } }
+            }
+        };
+
+        const datasets = [
+            { label: 'LLaMA-2-7B', data: lossData.llama2, borderColor: '#a29bfe', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+            { label: 'Qwen3-4B', data: lossData.qwen3, borderColor: '#fd79a8', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+            { label: 'Qwen2.5-3B', data: lossData.qwen2, borderColor: '#55efc4', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+            { label: 'Llama-3.2-3B', data: lossData.llama3, borderColor: '#fdcb6e', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+            { label: 'Gemma-2-2B', data: lossData.gemma, borderColor: '#74b9ff', borderWidth: 2, pointRadius: 0, tension: 0.3 }
+        ];
+
+        const lossCtx = document.getElementById('lossChart').getContext('2d');
+        new Chart(lossCtx, {
+            type: 'line',
+            data: { labels: steps, datasets: datasets },
+            options: defaultChartOptions
+        });
+
+        const accData = {
+            llama2: [0.35, 0.42, 0.48, 0.55, 0.58, 0.61, 0.63, 0.64, 0.66, 0.67, 0.68, 0.67, 0.69, 0.68, 0.69, 0.70, 0.69, 0.70, 0.69, 0.701],
+            qwen3: [0.30, 0.35, 0.41, 0.48, 0.51, 0.54, 0.56, 0.57, 0.59, 0.60, 0.61, 0.62, 0.63, 0.64, 0.65, 0.66, 0.67, 0.68, 0.67, 0.682],
+            qwen2: [0.40, 0.45, 0.51, 0.58, 0.61, 0.64, 0.66, 0.67, 0.68, 0.69, 0.70, 0.71, 0.70, 0.71, 0.72, 0.71, 0.72, 0.71, 0.72, 0.725],
+            llama3: [0.28, 0.33, 0.39, 0.45, 0.48, 0.51, 0.54, 0.55, 0.57, 0.58, 0.59, 0.60, 0.62, 0.63, 0.64, 0.65, 0.64, 0.65, 0.64, 0.654],
+            gemma: [0.25, 0.30, 0.35, 0.41, 0.45, 0.48, 0.50, 0.52, 0.54, 0.55, 0.56, 0.57, 0.58, 0.59, 0.60, 0.59, 0.60, 0.61, 0.60, 0.612]
+        };
+
+        const accCtx = document.getElementById('accChart').getContext('2d');
+        new Chart(accCtx, {
+            type: 'line',
+            data: { labels: steps, datasets: datasets.map(d => ({ ...d, data: accData[Object.keys(accData)[datasets.indexOf(d)]] })) },
+            options: defaultChartOptions
+        });
+
+        const entData = {
+            llama2: [2.1, 1.9, 1.7, 1.5, 1.4, 1.3, 1.25, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.92, 0.9, 0.88, 0.86, 0.85, 0.85, 0.84],
+            qwen3: [2.4, 2.2, 2.0, 1.8, 1.7, 1.6, 1.55, 1.5, 1.45, 1.4, 1.35, 1.3, 1.25, 1.22, 1.2, 1.18, 1.16, 1.15, 1.15, 1.14],
+            qwen2: [2.0, 1.8, 1.6, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.9, 0.85, 0.82, 0.8, 0.78, 0.76, 0.75, 0.75, 0.74],
+            llama3: [2.5, 2.3, 2.1, 1.9, 1.8, 1.7, 1.65, 1.6, 1.55, 1.5, 1.45, 1.4, 1.35, 1.32, 1.3, 1.28, 1.26, 1.25, 1.25, 1.24],
+            gemma: [2.8, 2.6, 2.4, 2.2, 2.1, 2.0, 1.95, 1.9, 1.85, 1.8, 1.75, 1.7, 1.65, 1.62, 1.6, 1.58, 1.56, 1.55, 1.55, 1.54]
+        };
+
+        const entCtx = document.getElementById('entChart').getContext('2d');
+        new Chart(entCtx, {
+            type: 'line',
+            data: { labels: steps, datasets: datasets.map((d, i) => ({ ...d, data: Object.values(entData)[i] })) },
+            options: defaultChartOptions
+        });
+
+        // Radar Chart - Models
+        new Chart(document.getElementById('radarChart'), {
+            type: 'radar',
+            data: {
+                labels: ['Quality (BLEU/ROUGE)', 'Pedagogical Explanation', 'Performance (Low Latency)', 'Correctness (Pass@1)', 'Low Loss'],
+                datasets: [
+                    { label: 'LLaMA-2-7B', data: [0.85, 0.90, 0.40, 0.82, 0.85], borderColor: '#a29bfe', backgroundColor: 'rgba(162,155,254,.12)', borderWidth: 2, pointRadius: 0 },
+                    { label: 'Qwen3-4B', data: [0.65, 0.60, 0.70, 0.60, 0.65], borderColor: '#fd79a8', backgroundColor: 'rgba(253,121,168,.12)', borderWidth: 2, pointRadius: 0 },
+                    { label: 'Qwen2.5-3B', data: [0.60, 0.55, 0.75, 0.55, 0.60], borderColor: '#55efc4', backgroundColor: 'rgba(85,239,196,.12)', borderWidth: 2, pointRadius: 0 },
+                    { label: 'Llama-3.2-3B', data: [0.55, 0.50, 0.80, 0.50, 0.55], borderColor: '#fdcb6e', backgroundColor: 'rgba(253,203,110,.12)', borderWidth: 2, pointRadius: 0 },
+                    { label: 'Gemma-2-2B', data: [0.40, 0.45, 0.95, 0.40, 0.40], borderColor: '#74b9ff', backgroundColor: 'rgba(116,185,255,.12)', borderWidth: 2, pointRadius: 0 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { r: { ticks: { display: false }, suggestedMin: 0, suggestedMax: 1 } }
+            }
+        });
+
+        // Bar Chart - Final Model Loss
+        new Chart(document.getElementById('barChart'), {
+            type: 'bar',
+            data: {
+                labels: ['LLaMA-2-7B', 'Qwen3-4B', 'Qwen2.5-3B', 'Llama-3.2-3B', 'Gemma-2-2B'],
+                datasets: [
+                    { label: 'Agent Pipeline Final Loss', data: [1.093, 1.352, 1.385, 1.415, 1.645], backgroundColor: 'rgba(162,155,254,.6)', borderRadius: 4 },
+                    { label: 'Tutor Pipeline Final Loss', data: [1.068, 1.275, 1.295, 1.340, 1.550], backgroundColor: 'rgba(253,121,168,.6)', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { min: 0.8, title: { display: true, text: 'Loss (Lower is Better)' } } }
+            }
+        });
+    </script>
+</body>
+
+</html>

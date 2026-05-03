@@ -1,0 +1,57 @@
+{
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "metrics": {
+    "ROUGE-1": {
+      "Base": 0.16051074474186197,
+      "FT": 0.27453703453748035
+    },
+    "ROUGE-L": {
+      "Base": 0.07549830284679068,
+      "FT": 0.11238013167117647
+    },
+    "BLEU-4": {
+      "Base": 0.003946002802878511,
+      "FT": 0.010109172053677921
+    },
+    "BERTScore-P": {
+      "Base": 0.7231071376800537,
+      "FT": 0.7928083419799805
+    },
+    "BERTScore-R": {
+      "Base": 0.7139153695106506,
+      "FT": 0.7592319142818451
+    },
+    "BERTScore-F1": {
+      "Base": 0.7182924556732178,
+      "FT": 0.7753347504138947
+    },
+    "Perplexity": {
+      "Base": 8.090832710266113,
+      "FT": 2.50187087059021
+    },
+    "MMLU-CS-Overall": {
+      "Base": 0.39166666666666666,
+      "FT": 0.19166666666666668
+    },
+    "MMLU-College Computer Scien": {
+      "Base": 0.3,
+      "FT": 0.2
+    },
+    "MMLU-High School Computer S": {
+      "Base": 0.375,
+      "FT": 0.2
+    },
+    "MMLU-Computer Security": {
+      "Base": 0.5,
+      "FT": 0.175
+    },
+    "HumanEval Pass@1": {
+      "Base": 0.0,
+      "FT": 0.0
+    },
+    "P50 Latency (ms)": {
+      "Base": 9663.141840000208,
+      "FT": 13947.764826500133
+    }
+  }
+}
