@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime       @default(now())
+  paths        LearningPath[]
+  chats        ChatMemory[]
+}
+
+model LearningPath {
+  id         String       @id @default(uuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id])
+  topic      String
+  status     String       @default("active")
+  createdAt  DateTime     @default(now())
+  milestones Milestone[]
+  graphData  String?
+}
+
+model Milestone {
+  id              String       @id @default(uuid())
+  pathId          String
+  path            LearningPath @relation(fields: [pathId], references: [id])
+  title           String
+  topics          String       
+  content         String?
+  detailedContent String?      
+  progress        Int          @default(0)
+  completed       Boolean      @default(false)
+  locked          Boolean      @default(true)
+  hasFinetuning   Boolean      @default(false)
+}
+
+model ChatMemory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  role       String   
+  content    String
+  contextRef String?  
+  createdAt  DateTime @default(now())
+}

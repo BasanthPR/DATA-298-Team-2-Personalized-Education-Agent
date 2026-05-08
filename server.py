@@ -181,4 +181,4 @@ def health():
 # ── Entry point (for local testing only — on EC2 use uvicorn via CLI) ─────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

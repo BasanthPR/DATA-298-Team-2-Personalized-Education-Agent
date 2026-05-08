@@ -1,0 +1,50 @@
+services:
+  # ── Backend API (Node.js + Express + SQLite) ───────────────────────────────
+  - type: web
+    name: piab-backend
+    runtime: docker
+    dockerfilePath: ./Backend/Dockerfile
+    dockerContext: ./Backend
+    disk:
+      name: piab-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        value: file:/data/prisma/dev.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: VITE_GEMINI_API_KEY
+        value: AIzaSyBaP7H3-4x7FL8RIgh8pROA9Cmo5UaVG2E
+      - key: VITE_OPENAI_API_KEY
+        value: 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
+      - key: VITE_DEEPSEEK_API_KEY
+        value: sk-a3b7823159bc4daaa908712d8f5843ee
+      - key: VITE_OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: VITE_DEEPSEEK_MODEL
+        value: deepseek-chat
+      # Modal finetuned model endpoints (deployed 2026-05-08, min_containers=0)
+      - key: FINETUNED_API_URL
+        value: https://basanth-periyapatnaroopakumar--piab-inference-inferences-5f6054.modal.run
+      - key: FINETUNED_TIMEOUT_MS
+        value: 120000
+      - key: LLAMA_CLOUD_API_KEY
+        sync: false
+
+  # ── Frontend (React + Vite static site) ───────────────────────────────────
+  - type: web
+    name: piab-frontend
+    runtime: static
+    buildCommand: cd Frontend_GitHub && npm ci && npm run build
+    staticPublishPath: Frontend_GitHub/dist
+    envVars:
+      # Points all /api/* calls to the backend service
+      - key: VITE_BACKEND_URL
+        value: https://piab-backend.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
