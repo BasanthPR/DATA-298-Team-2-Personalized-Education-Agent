@@ -1,48 +1,44 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { llmService } from "../services/llmService";
 
-
 const LearningPathContext = createContext();
 
 export const LearningPathProvider = ({ children }) => {
-    const [learningPaths, setLearningPaths] = useState(() => {
-        const savedPaths = localStorage.getItem("learning_paths");
-        if (savedPaths) return JSON.parse(savedPaths);
+    const [learningPaths, setLearningPaths] = useState([]);
+    const [currentPathId, setCurrentPathId] = useState(null);
+    const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem("llm_provider") || 'gemini');
 
-        // Migration for legacy single path
-        const oldPath = localStorage.getItem("learning_path");
-        if (oldPath) {
-            const milestones = JSON.parse(oldPath);
-            if (milestones.length > 0) {
-                const initialPath = {
-                    id: Date.now().toString(),
-                    title: "My First Learning Path",
-                    milestones: milestones,
-                    createdAt: new Date().toISOString()
-                };
-                return [initialPath];
+    // Fetch paths from backend on mount
+    useEffect(() => {
+        const fetchPaths = async () => {
+            const token = localStorage.getItem('auth_token');
+            if (!token) return;
+
+            try {
+                const res = await fetch('/api/paths', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setLearningPaths(data);
+                    if (data.length > 0 && !currentPathId) {
+                        setCurrentPathId(data[0].id);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch paths:", err);
             }
-        }
-        return [];
-    });
-
-    const [currentPathId, setCurrentPathId] = useState(() => {
-        return localStorage.getItem("current_path_id") || (learningPaths.length > 0 ? learningPaths[0].id : null);
-    });
-
-    const [selectedProvider, setSelectedProvider] = useState(() => {
-        return localStorage.getItem("llm_provider") || 'gemini';
-    });
+        };
+        fetchPaths();
+    }, []); // Only on mount. A real app might re-trigger on login.
 
     // Derived state for current path's milestones
-    const currentPath = learningPaths.find(p => p.id === currentPathId);
+    const currentPath = learningPaths.find(p => String(p.id) === String(currentPathId));
     const milestones = currentPath ? currentPath.milestones : [];
 
-    // Helper to get current milestone ID from the milestones array
     const currentMilestoneId = milestones.find(m => !m.completed && !m.locked)?.id || (milestones.length > 0 ? milestones[milestones.length - 1].id : null);
 
     useEffect(() => {
-        // Initialize provider on mount
         llmService.setProvider(selectedProvider);
     }, [selectedProvider]);
 
@@ -52,58 +48,68 @@ export const LearningPathProvider = ({ children }) => {
         llmService.setProvider(provider);
     };
 
-    useEffect(() => {
-        localStorage.setItem("learning_paths", JSON.stringify(learningPaths));
-    }, [learningPaths]);
+    const createNewPath = async (title, newMilestones, graphData) => {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
 
-    useEffect(() => {
-        if (currentPathId) {
-            localStorage.setItem("current_path_id", currentPathId);
+        try {
+            const res = await fetch('/api/paths', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ topic: title || "New Learning Path", milestones: newMilestones, graphData: graphData ? JSON.stringify(graphData) : null })
+            });
+
+            if (res.ok) {
+                const newPath = await res.json();
+                setLearningPaths(prev => [newPath, ...prev]);
+                setCurrentPathId(newPath.id);
+            }
+        } catch (err) {
+            console.error("Failed to create path:", err);
         }
-    }, [currentPathId]);
-
-    const createNewPath = (title, newMilestones) => {
-        const newPath = {
-            id: Date.now().toString(),
-            title: title || "New Learning Path",
-            milestones: newMilestones,
-            createdAt: new Date().toISOString()
-        };
-        setLearningPaths(prev => [...prev, newPath]);
-        setCurrentPathId(newPath.id);
     };
 
     const switchPath = (id) => {
-        if (learningPaths.some(p => p.id === id)) {
+        if (learningPaths.some(p => String(p.id) === String(id))) {
             setCurrentPathId(id);
         }
     };
 
-    const updatePathMilestones = (pathId, updatedMilestones) => {
+    const updateMilestone = async (id, updatedData) => {
+        if (!currentPathId) return;
+
+        // Optimistic UI Update
+        const updatedMilestones = milestones.map((m) =>
+            (String(m.id) === String(id) ? { ...m, ...updatedData } : m)
+        );
         setLearningPaths(prev => prev.map(path => {
-            if (path.id === pathId) {
+            if (String(path.id) === String(currentPathId)) {
                 return { ...path, milestones: updatedMilestones };
             }
             return path;
         }));
-    };
 
-    // Legacy support wrapper - sets milestones for CURRENT path
-    const setMilestonesWrapper = (newMilestones) => {
-        if (!currentPathId) {
-            createNewPath("Generated Path", newMilestones);
-        } else {
-            updatePathMilestones(currentPathId, newMilestones);
+        // Backend sync
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+            await fetch(`/api/paths/milestone/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(updatedData)
+            }).catch(err => console.error("Failed to update milestone on server", err));
         }
     };
 
-    const updateMilestone = (id, updatedData) => {
-        if (!currentPathId) return;
-
-        const updatedMilestones = milestones.map((m) =>
-            (String(m.id) === String(id) ? { ...m, ...updatedData } : m)
-        );
-        updatePathMilestones(currentPathId, updatedMilestones);
+    const setMilestonesWrapper = (newMilestones) => {
+        // In full stack, updating the entire path's milestones requires a bit more logic.
+        // For simplicity, we just create a new path if new milestones are generated to replace the old.
+        createNewPath("Adjusted Learning Path", newMilestones, null);
     };
 
     const getMilestoneById = (id) => {
@@ -111,23 +117,90 @@ export const LearningPathProvider = ({ children }) => {
     };
 
     const completeMilestone = (id) => {
-        if (!currentPathId) return;
-
+        updateMilestone(id, { completed: true, progress: 100 });
+        
+        // Find next milestone and visually unlock it locally
         const index = milestones.findIndex((m) => String(m.id) === String(id));
-        if (index === -1) return;
-
-        console.log(`Completing milestone ${id} at index ${index}`);
-
-        // Mark current as complete
-        const updatedMilestones = [...milestones];
-        updatedMilestones[index] = { ...updatedMilestones[index], completed: true, progress: 100 };
-
-        // Unlock next milestone if it exists
-        if (index < updatedMilestones.length - 1) {
-            updatedMilestones[index + 1] = { ...updatedMilestones[index + 1], locked: false };
+        if (index !== -1 && index < milestones.length - 1) {
+            const nextId = milestones[index + 1].id;
+            updateMilestone(nextId, { locked: false });
         }
+    };
 
-        updatePathMilestones(currentPathId, updatedMilestones);
+    const deletePath = async (id) => {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
+
+        try {
+            const res = await fetch(`/api/paths/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const refreshedPaths = learningPaths.filter(p => String(p.id) !== String(id));
+                setLearningPaths(refreshedPaths);
+                if (String(currentPathId) === String(id)) {
+                    setCurrentPathId(refreshedPaths.length > 0 ? refreshedPaths[0].id : null);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to delete path:", err);
+        }
+    };
+
+    const updateGraphNodeScore = async (conceptNodeId, isCorrect) => {
+        console.log("updateGraphNodeScore called with:", conceptNodeId);
+        if (!currentPathId) {
+            console.log("No currentPathId");
+            return;
+        }
+        const currentPath = learningPaths.find(p => String(p.id) === String(currentPathId));
+        if (!currentPath || !currentPath.graphData) {
+            console.log("No currentPath or graphData");
+            return;
+        }
+        
+        let graphDataObj;
+        try {
+            graphDataObj = typeof currentPath.graphData === 'string' ? JSON.parse(currentPath.graphData) : currentPath.graphData;
+        } catch (e) { 
+            console.error("Failed to parse graph data in context", e);
+            return; 
+        }
+        
+        const nodeIndex = graphDataObj.nodes.findIndex(n => String(n.id) === String(conceptNodeId) || String(n.data.label).toLowerCase() === String(conceptNodeId).toLowerCase());
+        console.log("Found Node Index:", nodeIndex);
+        
+        if (nodeIndex !== -1) {
+            let currentScore = graphDataObj.nodes[nodeIndex].data.score || 50;
+            if (isCorrect) currentScore = Math.min(100, currentScore + 20);
+            else currentScore = Math.max(0, currentScore - 15);
+            
+            console.log("Updating score for", graphDataObj.nodes[nodeIndex].data.label, "from", graphDataObj.nodes[nodeIndex].data.score, "to", currentScore);
+            graphDataObj.nodes[nodeIndex].data.score = currentScore;
+            graphDataObj.nodes[nodeIndex].data.status = 'unlocked'; // Ensure it's not locked anymore so it renders the score!
+            
+            // local state update
+            setLearningPaths(prev => prev.map(path => {
+                if (String(path.id) === String(currentPathId)) {
+                    return { ...path, graphData: JSON.stringify(graphDataObj) };
+                }
+                return path;
+            }));
+            
+            // remote update
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                await fetch(`/api/paths/${currentPathId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ graphData: JSON.stringify(graphDataObj) })
+                });
+            }
+        }
     };
 
     return (
@@ -138,6 +211,7 @@ export const LearningPathProvider = ({ children }) => {
                 currentPathId,
                 createNewPath,
                 switchPath,
+                deletePath,
                 setMilestones: setMilestonesWrapper,
                 updateMilestone,
                 currentMilestoneId,
@@ -145,6 +219,7 @@ export const LearningPathProvider = ({ children }) => {
                 getMilestoneById,
                 selectedProvider,
                 changeProvider,
+                updateGraphNodeScore,
             }}
         >
             {children}
