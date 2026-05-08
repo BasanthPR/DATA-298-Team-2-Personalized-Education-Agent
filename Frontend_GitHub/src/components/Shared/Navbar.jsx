@@ -38,11 +38,11 @@ function Navbar() {
                         className="provider-select"
                         style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface-color)', color: 'var(--text-main)', fontFamily: 'Inter', outline: 'none', cursor: 'pointer' }}
                     >
-                        <option value="gemini">Google Gemini</option>
-                        <option value="openai">OpenAI (GPT-4o)</option>
-                        <option value="deepseek">DeepSeek V3 (API)</option>
-                        <option value="finetuned-deepseek">DeepSeek R1 (Finetuned)</option>
-                        <option value="finetuned-mistral">Mistral 7B (Finetuned)</option>
+                        <option value="openai">OpenAI GPT-4o mini ✓</option>
+                        <option value="finetuned-deepseek">DeepSeek R1 7B (Finetuned) ✓</option>
+                        <option value="finetuned-mistral">Mistral 7B (Finetuned) ✓</option>
+                        <option value="deepseek">DeepSeek API</option>
+                        <option value="gemini">Gemini (quota limited)</option>
                     </select>
                 </div>
             </div>

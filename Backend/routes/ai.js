@@ -116,11 +116,15 @@ const callProvider = async (provider, prompt) => {
     }
 };
 
-// Whether an error is a quota/rate-limit error worth falling back from
+// Whether an error is a provider-level quota/billing issue worth falling back from
 const isQuotaError = (err) => {
     const msg = (err?.message || '').toLowerCase();
     const status = err?.status || err?.statusCode || 0;
-    return status === 429 || msg.includes('429') || msg.includes('quota') || msg.includes('rate limit');
+    return status === 429 || status === 402
+        || msg.includes('429') || msg.includes('402')
+        || msg.includes('quota') || msg.includes('rate limit')
+        || msg.includes('insufficient balance') || msg.includes('insufficient_quota')
+        || msg.includes('too many requests');
 };
 
 // Provider fallback chain: if the requested provider hits a quota/rate-limit,
@@ -165,7 +169,7 @@ router.post('/generate', asyncRoute(async (req, res) => {
     let lastError;
     for (let i = 0; i < 3; i++) {
         try {
-            const data = await generateContent(provider || 'gemini', prompt);
+            const data = await generateContent(provider || 'openai', prompt);
             return res.json(data);
         } catch (err) {
             lastError = err;
@@ -212,7 +216,7 @@ Return as a JSON object with a key "answer" containing your raw markdown respons
     let lastError;
     for (let i = 0; i < 3; i++) {
         try {
-            const data = await generateContent(provider || 'gemini', prompt);
+            const data = await generateContent(provider || 'openai', prompt);
             return res.json(data);
         } catch (err) {
             lastError = err;
@@ -284,20 +288,37 @@ router.post('/stream-generate', asyncRoute(async (req, res) => {
             }
             res.write(answer);
         } else {
-            const streamModel = geminiClient.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const result = await streamModel.generateContentStream(prompt);
-            for await (const chunk of result.stream) {
-                res.write(chunk.text());
+            // Default: try OpenAI stream first, fall back to Gemini
+            const streamProviders = openaiClient
+                ? [
+                    async () => {
+                        const stream = await openaiClient.chat.completions.create({ model: OPENAI_MODEL, messages: [{ role: 'user', content: prompt }], stream: true });
+                        for await (const chunk of stream) res.write(chunk.choices[0]?.delta?.content || '');
+                    },
+                    async () => {
+                        const streamModel = geminiClient.getGenerativeModel({ model: "gemini-2.0-flash" });
+                        const result = await streamModel.generateContentStream(prompt);
+                        for await (const chunk of result.stream) res.write(chunk.text());
+                    },
+                  ]
+                : [
+                    async () => {
+                        const streamModel = geminiClient.getGenerativeModel({ model: "gemini-2.0-flash" });
+                        const result = await streamModel.generateContentStream(prompt);
+                        for await (const chunk of result.stream) res.write(chunk.text());
+                    },
+                  ];
+            for (const tryProvider of streamProviders) {
+                try { await tryProvider(); break; } catch (e) {
+                    if (!isQuotaError(e)) throw e;
+                    console.warn('[stream-generate fallback]', e.message?.slice(0, 60));
+                }
             }
         }
         res.end();
     } catch (err) {
         console.error("Streaming error:", err);
-        let userMessage = "Connection error while streaming AI response.";
-        if (err.message && err.message.includes('429')) {
-             userMessage = "Tutor AI free-tier quota exceeded. Please try again in a few seconds.";
-        }
-        res.write(`\n\n*[Error: ${userMessage}]*`);
+        res.write(`\n\n*[Error: AI provider quota exceeded. Switch to OpenAI in the top-right dropdown.]*`);
         res.end();
     }
 }));
@@ -396,12 +417,31 @@ IMPORTANT: Stream directly in markdown. DO NOT wrap with \`\`\`json or output JS
             byteCount = answer.length;
             res.write(answer);
         } else {
-            const streamModel = geminiClient.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const result = await streamModel.generateContentStream(prompt);
-            for await (const chunk of result.stream) {
-                const textChunk = chunk.text();
-                byteCount += textChunk.length;
-                res.write(textChunk);
+            // Default: try OpenAI stream first, fall back to Gemini
+            const streamProviders = openaiClient
+                ? [
+                    async () => {
+                        const stream = await openaiClient.chat.completions.create({ model: OPENAI_MODEL, messages: [{ role: 'user', content: prompt }], stream: true });
+                        for await (const chunk of stream) { const t = chunk.choices[0]?.delta?.content || ''; byteCount += t.length; res.write(t); }
+                    },
+                    async () => {
+                        const streamModel = geminiClient.getGenerativeModel({ model: "gemini-2.0-flash" });
+                        const result = await streamModel.generateContentStream(prompt);
+                        for await (const chunk of result.stream) { const t = chunk.text(); byteCount += t.length; res.write(t); }
+                    },
+                  ]
+                : [
+                    async () => {
+                        const streamModel = geminiClient.getGenerativeModel({ model: "gemini-2.0-flash" });
+                        const result = await streamModel.generateContentStream(prompt);
+                        for await (const chunk of result.stream) { const t = chunk.text(); byteCount += t.length; res.write(t); }
+                    },
+                  ];
+            for (const tryProvider of streamProviders) {
+                try { await tryProvider(); break; } catch (e) {
+                    if (!isQuotaError(e)) throw e;
+                    console.warn('[stream-rag fallback]', e.message?.slice(0, 60));
+                }
             }
         }
 

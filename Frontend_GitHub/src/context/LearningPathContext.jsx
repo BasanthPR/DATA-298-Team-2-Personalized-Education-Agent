@@ -7,7 +7,15 @@ const LearningPathContext = createContext();
 export const LearningPathProvider = ({ children }) => {
     const [learningPaths, setLearningPaths] = useState([]);
     const [currentPathId, setCurrentPathId] = useState(null);
-    const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem("llm_provider") || 'openai');
+    const [selectedProvider, setSelectedProvider] = useState(() => {
+        const saved = localStorage.getItem("llm_provider");
+        // Migrate: gemini quota is exhausted — force any user with gemini stored to openai
+        if (!saved || saved === 'gemini') {
+            localStorage.setItem("llm_provider", 'openai');
+            return 'openai';
+        }
+        return saved;
+    });
 
     // Fetch paths from backend on mount
     useEffect(() => {
