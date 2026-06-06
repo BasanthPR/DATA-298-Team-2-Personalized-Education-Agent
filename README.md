@@ -1,370 +1,362 @@
-# Personalized Education Agent (PEA)
+# Professor in a Box (PiAB)
 
-**Repository:** `personalized-education-agent`
+**Personalized Education Agent — DATA 298B Capstone · SJSU MSDA · Team 2 · Spring 2026**
 
+[![Report](https://img.shields.io/badge/docs-Final_Report-blue)](docs/Final_Report.pdf)
+[![Poster](https://img.shields.io/badge/docs-Poster-green)](docs/Poster.pdf)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Deploy: Render](https://img.shields.io/badge/deploy-Render-46E3B7)](https://render.com)
+[![Inference: Modal](https://img.shields.io/badge/inference-Modal_A10G-purple)](https://modal.com)
 
----
-
-# Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Key Features](#key-features)
-3. [Architecture & Components](#architecture--components)
-4. [Tech Stack](#tech-stack)
-5. [Folder Structure](#folder-structure)
-6. [Quick start — Local Development](#quick-start--local-development)
-7. [API Reference](#api-reference)
-8. [Data & Models](#data--models)
-9. [Training & Evaluation](#training--evaluation)
-10. [Teacher Dashboard & UX](#teacher-dashboard--ux)
-11. [Deployment](#deployment)
-12. [CI / CD](#ci--cd)
-13. [Testing Strategy](#testing-strategy)
-14. [Security & Privacy](#security--privacy)
-15. [Contributing & Roadmap](#contributing--roadmap)
-16. [Acknowledgements & References](#acknowledgements--references)
+PiAB is an end-to-end AI tutoring system that fine-tunes open-weight LLMs on computer science Q&A corpora and serves them via a production RAG pipeline. Students upload their study materials; the system retrieves semantically relevant context and generates personalized, pedagogically grounded answers — streamed token-by-token from LoRA-adapted Mistral 7B and DeepSeek-R1 7B models running on serverless A10G GPUs.
 
 ---
 
-# Project Overview
+## Table of Contents
 
-The **Personalized Education Agent (PEA)** is a research-grade, agentic learning platform that dynamically models learner mastery and generates personalized instructional content in real time. The platform's core capability is a "Knowledge Tracker" for fine-grained mastery estimation together with a Generative Content Engine that creates tailored problems, hints, and explanations.
-
-Primary goals:
-
-* Provide individualized learning paths that adapt to student ability and pace.
-* Deliver instant, pedagogically useful feedback that explains *why* an answer is incorrect and gives targeted remediation.
-* Supply teachers with actionable dashboards that highlight at-risk students and recommend interventions.
-
-This README is a complete, demo-ready repository scaffold that documents architecture, interfaces, data flows, sample commands, and reproducible model-training recipes for portfolio or academic demonstration.
-
----
-
-# Key Features
-
-* Knowledge tracing engine (Bayesian + deep-learning hybrid)
-* Generative Content Engine (fine-tuned LLM prompts & retrieval augmentation)
-* Item difficulty calibration (IRT-inspired static/dynamic models)
-* Real-time feedback loop with low-latency API
-* Teacher analytics dashboard with cohort & per-student views
-* Synthetic student simulator for stress-testing and AB experiments
-* Full DevOps-ready Docker/Kubernetes deployment with sample manifests
+1. [Research Context](#research-context)
+2. [System Architecture](#system-architecture)
+3. [Models & Fine-Tuning](#models--fine-tuning)
+4. [Data Pipeline (ETL)](#data-pipeline-etl)
+5. [RAG Pipeline](#rag-pipeline)
+6. [Tech Stack](#tech-stack)
+7. [Repository Structure](#repository-structure)
+8. [Quick Start — Local Development](#quick-start--local-development)
+9. [API Reference](#api-reference)
+10. [Deployment](#deployment)
+11. [CI / CD](#ci--cd)
+12. [Team](#team)
 
 ---
 
-# Architecture & Components
+## Research Context
 
-High-level components:
+Large language models exhibit strong average-case performance but struggle with low-frequency CS sub-domains and tend to hallucinate on domain-specific questions. PiAB addresses this with two complementary techniques:
 
-1. **Client (Web/React)** — student and teacher-facing UI.
-2. **API Gateway (Express/Node.js)** — authentication, routing, rate-limiting.
-3. **Content Service (Python / FastAPI)** — content generation, item templating, caching.
-4. **Knowledge Tracker Service (Python / Flask)** — real-time mastery estimation and update API.
-5. **Model Training Pipeline (Airflow + PySpark optional)** — offline training, calibration, and export.
-6. **Vector DB + Retriever (FAISS/Weaviate)** — supports retrieval-augmented generation (RAG).
-7. **Metadata Store (Postgres)** — users, items, item metadata, attempts.
-8. **Time-series DB (InfluxDB / ClickHouse)** — telemetry and event metrics.
-9. **Dashboard (Streamlit / React + Recharts)** — teacher analytics and cohort monitoring.
+1. **Supervised fine-tuning with LoRA** — adapts Mistral-7B-Instruct-v0.3 and DeepSeek-R1-Distill-Qwen-7B to CS tutoring style using curated Q&A datasets (LeetCode, Codeforces, APPS, CS textbooks).
+2. **Retrieval-Augmented Generation** — augments every inference call with student-specific context extracted from uploaded notes/PDFs, reducing hallucination on personal study material.
 
-Sequence example (student attempt flow):
-
-1. Student requests next item → API requests Knowledge Tracker for recommended item.
-2. Knowledge Tracker returns an item id and difficulty target.
-3. Content Service renders item (template + variables) and logs attempt.
-4. Student submits answer → API forwards to scoring + immediate feedback generation via Gen Engine.
-5. Knowledge Tracker updates student's mastery profile and writes to Postgres + event pipeline.
-6. Dashboard and analytics reflect updated mastery within seconds.
+See [`docs/Final_Report.pdf`](docs/Final_Report.pdf) for full experimental results and [`docs/Poster.pdf`](docs/Poster.pdf) for the conference-style poster.
 
 ---
 
-# Tech Stack
-
-* Frontend: React, Tailwind CSS, TypeScript
-* Backend: Node.js (API Gateway), FastAPI/Flask for ML services
-* ML: PyTorch, Hugging Face Transformers, scikit-learn
-* Databases: PostgreSQL (primary), Redis (cache), FAISS (vector search), ClickHouse (analytics)
-* Orchestration: Docker, Kubernetes (Helm charts included)
-* CI: GitHub Actions
-* Monitoring: Prometheus + Grafana
-
----
-
-# Folder Structure
+## System Architecture
 
 ```
-personalized-education-agent/
-├── README.md                # This file (demo)
-├── docs/                    # Design docs, architecture diagrams, research notes
-├── web/                     # React student + teacher apps
-│   ├── student/
-│   └── teacher/
-├── services/
-│   ├── api-gateway/         # Node.js / Express
-│   ├── content-service/     # FastAPI - content generation and templating
-│   ├── tracker-service/     # Flask - knowledge tracer and policy
-│   └── trainer/             # scripts, notebooks, training pipelines
-├── infra/
-│   ├── docker/              # Dockerfiles for each service
-│   ├── k8s/                 # Kubernetes manifests and Helm charts
-│   └── ci/                  # GitHub Actions workflows
-├── models/                  # Exported model artifacts (.pt/.bin) & model registry metadata
-├── samples/                 # Sample datasets, synthetic students, demo scripts
-├── notebooks/               # Jupyter notebooks for exploration and results
-└── tests/                   # Unit & integration tests
+                         ┌─────────────────────────────────────────────┐
+                         │              React + Vite Frontend           │
+                         │   Auth · Dashboard · Learning Path · Quiz   │
+                         └────────────────────┬────────────────────────┘
+                                              │  HTTPS / SSE streaming
+                         ┌────────────────────▼────────────────────────┐
+                         │        Node.js + Express API Gateway         │
+                         │  JWT Auth · Rate-limit · Provider fallback   │
+                         └──────┬──────────────┬────────────────┬───────┘
+                                │              │                │
+               ┌────────────────▼──┐  ┌────────▼───────┐  ┌───▼──────────────┐
+               │  SQLite + Prisma  │  │   ChromaDB     │  │  Modal Inference  │
+               │  Users · Chats    │  │  Vector store  │  │  (A10G serverless)│
+               │  Learning paths   │  │  RAG memory    │  │  Mistral 7B       │
+               └───────────────────┘  └────────────────┘  │  DeepSeek-R1 7B  │
+                                                           └──────────────────┘
+                                                                    │ fallback
+                                              ┌─────────────────────▼──────────┐
+                                              │   Cloud AI Fallback Chain       │
+                                              │   OpenAI gpt-4o-mini →          │
+                                              │   DeepSeek-chat →               │
+                                              │   Gemini 2.0 Flash              │
+                                              └────────────────────────────────┘
+```
+
+**Request lifecycle (stream-RAG path):**
+
+1. Student asks a question; frontend opens a chunked SSE stream to `/api/ai/stream-rag`.
+2. API Gateway retrieves the top-5 semantically similar chunks from ChromaDB (per-user namespace).
+3. Retrieved context + question are injected into a structured prompt.
+4. The prompt is forwarded to the selected provider; tokens are streamed back to the client in real time.
+5. If the primary provider returns 401/429/402, the gateway automatically falls back through OpenAI → DeepSeek → Gemini without surfacing an error to the user.
+
+---
+
+## Models & Fine-Tuning
+
+| Model | Base | Adapter | HuggingFace Hub |
+|---|---|---|---|
+| **Mistral CS Tutor** | `mistralai/Mistral-7B-Instruct-v0.3` | LoRA rank-16 | `BasanthPR/mistral7b-cs-tutor` |
+| **DeepSeek-R1 CS Tutor** | `deepseek-ai/DeepSeek-R1-Distill-Qwen-7B` | LoRA rank-16 | `BasanthPR/deepseek-r1-7b-cs-tutor` |
+
+**Training recipe:**
+- **Quantization:** 4-bit NF4 (BitsAndBytes `bnb_4bit_quant_type="nf4"`, double quant enabled) — reduces each 14 GB model to ~4 GB VRAM footprint.
+- **Adapter:** PEFT LoRA via Hugging Face `peft` library.
+- **Data:** Multi-source CS Q&A — LeetCode problems, Codeforces editorial-style explanations, APPS dataset, CS textbook chapters.
+- **EDA notebooks:** [`EDA/`](EDA/) — per-dataset distribution analysis, token length histograms, label balance.
+- **Processing notebooks:** [`Data Processing/`](Data%20Processing/) — deduplication, prompt formatting, train/val splits.
+
+**Inference config (Modal):**
+- GPU: NVIDIA A10G (24 GB VRAM)
+- Batch endpoint (`POST /ask`) — waits for full generation, returns JSON.
+- Streaming endpoint (`POST /ask-stream`) — SSE token stream; client receives `data: {"token": "..."}` lines.
+- Cold start: ~60–90 s (weights loaded from Modal Volume cache). Warm requests: ~5–15 s.
+- `min_containers=0`: scales to zero when idle; no GPU cost between requests.
+
+---
+
+## Data Pipeline (ETL)
+
+[`ETL/`](ETL/) contains Apache Airflow DAGs that orchestrate dataset ingestion and preprocessing.
+
+| DAG | Description |
+|---|---|
+| `multiple_datasets_etl.py` | Pulls raw CS Q&A datasets from Hugging Face Hub, normalizes schema, writes parquet. |
+| `main.py` | Orchestrates full pipeline: ingest → deduplicate → format → upload to training bucket. |
+
+Local Airflow dev environment uses [Astronomer CLI](https://docs.astronomer.io/astro/cli/overview).
+
+---
+
+## RAG Pipeline
+
+The vector memory layer (`Backend/services/vectorDb.js`) uses **ChromaDB** with per-user collection namespacing:
+
+1. **Ingest** — uploaded file (PDF/image) is parsed to Markdown via **LlamaCloud** (LlamaParse API).
+2. **Chunk** — document is split into ~800-character semantic chunks with 100-character overlap.
+3. **Embed** — chunks are embedded with **Gemini `text-embedding-004`** and stored in ChromaDB keyed by `userId`.
+4. **Retrieve** — at query time, the question is embedded and the top-5 nearest chunks are fetched.
+5. **Generate** — retrieved context is injected into the system prompt; the LLM answers with direct citations.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18, Vite, React Router, Tailwind CSS, Mermaid.js |
+| **Backend** | Node.js 20, Express 4, Prisma ORM |
+| **Database** | SQLite (user data, chat history, learning paths) |
+| **Vector DB** | ChromaDB (semantic document memory) |
+| **Document parsing** | LlamaCloud (LlamaParse) — multi-modal PDF/image OCR |
+| **Embeddings** | Gemini `text-embedding-004` |
+| **Fine-tuned inference** | Modal (serverless A10G), Hugging Face Transformers, PEFT, BitsAndBytes |
+| **Cloud AI fallback** | OpenAI `gpt-4o-mini`, DeepSeek-chat, Gemini 2.0 Flash |
+| **Auth** | JWT (bcrypt hashed passwords, `requireAuth` middleware) |
+| **Deployment** | Render (backend + frontend static), Modal (inference) |
+| **ETL** | Apache Airflow (Astronomer runtime) |
+| **CI** | GitHub Actions |
+
+---
+
+## Repository Structure
+
+```
+professor-in-a-box/
+├── Backend/                   # Node.js + Express API
+│   ├── routes/
+│   │   ├── ai.js              # Multi-provider AI: streaming, RAG, fallback chain
+│   │   ├── chats.js           # Persistent chat history
+│   │   ├── paths.js           # Learning path CRUD
+│   │   └── uploads.js         # File ingest → LlamaParse → ChromaDB
+│   ├── services/
+│   │   └── vectorDb.js        # ChromaDB client (embed, store, retrieve)
+│   ├── middleware/
+│   │   └── auth.js            # JWT requireAuth middleware
+│   ├── prisma/
+│   │   └── schema.prisma      # SQLite schema (User, Chat, LearningPath)
+│   └── Dockerfile
+├── Frontend/                  # React + Vite SPA
+│   └── src/
+│       ├── pages/             # Dashboard, CreatePath, MilestoneDetail, Quiz
+│       ├── components/        # AI chat, learning path nodes, quiz cards
+│       ├── context/           # LearningPathContext (global state)
+│       └── services/          # API bridge, LLM service, config
+├── ETL/                       # Apache Airflow DAGs
+│   └── dags/
+│       ├── multiple_datasets_etl.py
+│       └── main.py
+├── EDA/                       # Exploratory data analysis notebooks
+├── Data Processing/           # Dataset cleaning and prompt-formatting notebooks
+├── modal_server.py            # Modal inference server (A10G, Mistral + DeepSeek)
+├── server.py                  # EC2 inference server (T4 variant, with CloudWatch logging)
+├── render.yaml                # Render deployment manifest (backend + frontend)
+├── docs/
+│   ├── Final_Report.pdf       # DATA 298B final report
+│   └── Poster.pdf             # Conference-style project poster
+└── .github/
+    └── workflows/
+        └── deploy-frontend.yml
 ```
 
 ---
 
-# Quick start — Local Development
+## Quick Start — Local Development
 
-> Requirements: Docker (20+), Docker Compose, Node 18+, Python 3.10+, git
+**Requirements:** Node.js 20+, Python 3.11+, Docker
 
-1. Clone the repo
+### 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/fake-org/personalized-education-agent.git
-cd personalized-education-agent
+git clone https://github.com/BasanthPR/DATA-298-Team-2-Personalized-Education-Agent.git
+cd DATA-298-Team-2-Personalized-Education-Agent
 ```
 
-2. Create `.env` from sample
+### 2. Backend setup
 
 ```bash
-cp .env.example .env
-# Edit sample values (DB passwords, API keys)
+cd Backend
+cp .env.example .env          # fill in API keys (see .env.example for keys needed)
+npm install
+npx prisma migrate dev        # creates SQLite schema
+node index.js                 # starts on :4000
 ```
 
-3. Start services locally (dev mode)
+Required env vars:
+```
+VITE_GEMINI_API_KEY=...       # Google AI Studio
+VITE_OPENAI_API_KEY=...       # OpenAI (optional — Gemini is the default fallback)
+VITE_DEEPSEEK_API_KEY=...     # DeepSeek (optional)
+LLAMA_CLOUD_API_KEY=...       # LlamaCloud (for file upload / OCR)
+JWT_SECRET=...                # any random string
+FINETUNED_ASK_URL=...         # Modal inference URL (optional)
+FINETUNED_STREAM_URL=...      # Modal streaming URL (optional)
+```
+
+### 3. Frontend setup
 
 ```bash
-docker-compose -f infra/docker/docker-compose.dev.yml up --build
+cd Frontend
+npm install
+npm run dev                   # starts on :5173
 ```
 
-4. Run migrations & seed demo data
+### 4. Modal inference (optional — requires Modal account)
 
 ```bash
-docker exec -it pea_postgres psql -U postgres -d pea_db -f /docker-entrypoint-initdb.d/seed.sql
+pip install modal
+modal deploy modal_server.py
+# Modal prints permanent URLs for /ask, /ask-stream, /health, /config
+# Set these as FINETUNED_* env vars in the backend
 ```
 
-5. Open student UI: `http://localhost:3000`
-   Open teacher UI: `http://localhost:3001`
+---
+
+## API Reference
+
+Base URL (local): `http://localhost:4000/api`
+
+### Auth
+
+| Method | Endpoint | Body | Description |
+|---|---|---|---|
+| `POST` | `/auth/register` | `{name, email, password}` | Create account |
+| `POST` | `/auth/login` | `{email, password}` | Returns JWT |
+
+### AI — Inference & RAG
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/ai/generate` | No | Batch JSON generation (path/quiz content) |
+| `POST` | `/ai/stream-generate` | No | SSE streaming (plain text) |
+| `POST` | `/ai/ask-rag` | JWT | Batch RAG answer from user's document memory |
+| `POST` | `/ai/stream-rag` | JWT | Streaming RAG (SSE) with document context injection |
+| `GET` | `/ai/warmup` | No | Pre-warm Modal container before demo |
+| `GET` | `/ai/refresh` | No | Force-reload API keys from Modal secret store |
+
+`POST /ai/stream-rag` body:
+```json
+{ "provider": "finetuned-deepseek", "question": "Explain dynamic programming" }
+```
+Valid `provider` values: `gemini` · `openai` · `deepseek` · `finetuned-mistral` · `finetuned-deepseek`
+
+### Learning Paths
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/paths` | JWT | List user's learning paths |
+| `POST` | `/paths` | JWT | Create a new path (AI-generated milestones) |
+| `GET` | `/paths/:id` | JWT | Get path with milestones |
+| `PUT` | `/paths/:id` | JWT | Update path |
+
+### Chat History
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/chats/:milestoneId` | JWT | Fetch saved Q&A for a milestone |
+| `POST` | `/chats` | JWT | Persist a Q&A exchange |
+
+### File Uploads
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/uploads` | JWT | Upload PDF/image → parse → embed → store in ChromaDB |
 
 ---
 
-# API Reference (Summary)
+## Deployment
 
-Base URL (dev): `http://localhost:8000/api`
+The system is split across two platforms:
 
-## Auth
+### Render — Web Services
 
-* `POST /auth/register` — register user (student/teacher/admin)
-* `POST /auth/login` — returns JWT
+`render.yaml` defines:
 
-## Student Flow
+| Service | Type | Description |
+|---|---|---|
+| `piab-backend` | Docker web service | Node.js API + Prisma + ChromaDB, 1 GB persistent disk |
+| `piab-frontend` | Static site | Vite build, SPA rewrite rules |
 
-* `GET /student/next-item?student_id={id}` — request a recommended item
-* `POST /student/submit` — submit answer `{ student_id, item_id, answer, time_taken }`
-* `GET /student/profile/{student_id}` — returns mastery profile
+To deploy: push to `main` — Render auto-deploys from the manifest.
 
-## Teacher Flow
-
-* `GET /teacher/class/{class_id}/summary` — aggregated metrics
-* `GET /teacher/student/{student_id}/attempts` — attempt history
-
-## Admin / Debug
-
-* `POST /admin/recompute_mastery` — recompute student mastery (for debugging)
-* `POST /admin/train_model` — trigger offline training job (background queue)
-
-Full OpenAPI spec is located at `/docs/openapi.yaml` in `services/api-gateway`.
-
----
-
-# Data & Models
-
-## Data model (simplified)
-
-* `users` — id, role, name, email, created_at
-* `items` — id, template_id, tags, difficulty_est, content_hash
-* `attempts` — id, student_id, item_id, response, correctness, timestamp, metadata
-* `mastery_profiles` — student_id, skill_id, probability_mastery, last_update
-
-## Knowledge Tracer
-
-We provide two tracer implementations for demo purposes:
-
-1. **Bayesian Knowledge Tracing (BKT)** — lightweight, interpretable baseline.
-2. **Deep Knowledge Tracing (DKT)** — LSTM-based sequence model implemented in PyTorch used for ablation and research.
-
-Both are implemented under `services/tracker-service/models/` with training scripts and example exports.
-
-## Generative Content Engine
-
-* Prompt engineering templates live in `services/content-service/prompts/`
-* Example: `problem_template_math_algebra.json` contains variable placeholders + difficulty parameters
-* RAG: content service first looks up top-K similar items from FAISS, then composes a prompt with the retrieved context before calling the LLM (or internal mock generator in offline mode).
-
----
-
-# Training & Evaluation
-
-A reproducible training pipeline is provided under `services/trainer/`.
-
-### Quick train (demo dataset)
+### Modal — Serverless GPU Inference
 
 ```bash
-cd services/trainer
-python train_dkt.py --data ../data/demo_attempts.csv --epochs 30 --out models/dkt_demo.pt
+modal deploy modal_server.py
 ```
 
-### Evaluation metrics
+- Scales to zero between requests (no GPU cost when idle).
+- First cold start downloads model weights (~15–20 min); subsequent cold starts load from Modal Volume (~60–90 s).
+- API keys for cloud providers are stored as Modal Secrets and fetched by the backend at runtime — no secrets in environment variables or source code.
 
-* Knowledge tracing: AUC, log-loss, calibration plots
-* Item bank: item difficulty RMSE vs true difficulty (simulated ground truth)
-* Content quality (LLM): human-rated fluency & relevance scores; automated metrics: BLEU / BERTScore (for template variants)
-
-Sample notebooks demonstrate how to compute each metric and produce visual reports in `notebooks/`.
-
----
-
-# Teacher Dashboard & UX
-
-Teacher dashboard features:
-
-* Class Overview: average mastery, progress, number of at-risk students
-* Student Drilldown: mastery timelines, recent attempts, suggested interventions
-* Item Bank: view/edit items and view difficulty estimates
-* AB Testing panel: run curriculum variants and compare cohort outcomes
-
-Static prototypes live in `web/teacher/static/` (Figma export + HTML mockups). A lightweight Streamlit dashboard is available for quick demos: `web/teacher/streamlit_demo.py`.
-
----
-
-# Deployment
-
-We include both Docker and Kubernetes manifests. Key steps:
-
-1. Build images
+**Pre-warming for live demos:**
 
 ```bash
-make build-images
-# or
-docker build -t pea-api:dev services/api-gateway
-```
-
-2. Publish images (demo)
-
-```bash
-docker tag pea-api:dev ghcr.io/fake-org/pea-api:dev
-docker push ghcr.io/fake-org/pea-api:dev
-```
-
-3. Helm deploy (k8s)
-
-```bash
-helm upgrade --install pea infra/k8s/helm/pea --namespace pea --create-namespace
-```
-
-4. Verify services
-
-```bash
-kubectl get pods -n pea
-kubectl port-forward svc/pea-api 8000:80 -n pea
+curl https://<your-backend>/api/ai/warmup
+# Hit this ~90 seconds before the demo; container stays warm for 60 s after last request
 ```
 
 ---
 
-# CI / CD
+## CI / CD
 
-GitHub Actions workflows are in `.github/workflows/`:
-
-* `ci/build-and-test.yml` — runs unit tests and lints for Python & JS
-* `ci/docker-publish.yml` — builds and publishes images on merge to `main`
-* `ci/helm-deploy.yml` — deploys to demo cluster on successful publish
+`.github/workflows/deploy-frontend.yml` — triggers on push to `main`, builds the Vite bundle and deploys to Render static hosting.
 
 ---
 
-# Testing Strategy
+## Team
 
-* Unit tests for services using `pytest` and `jest` (frontend)
-* Integration tests spin up a test Docker Compose environment and run end-to-end flows
-* Model regression tests: run a smoke prediction on saved fixtures to detect drift
+**SJSU MSDA — DATA 298B Team 2 — Spring 2026**
 
-Run full test suite:
+| Name | Role |
+|---|---|
+| Basanth Periyapatna Roopakumar | Backend · Inference · Deployment |
+| *(teammates)* | Frontend · ETL · Data · EDA |
 
-```bash
-make test
+---
+
+## Citation
+
+If you reference this work, please cite:
+
+```bibtex
+@misc{piab2026,
+  title     = {Professor in a Box: Personalized CS Tutoring via Fine-Tuned LLMs and RAG},
+  author    = {Periyapatna Roopakumar, Basanth and {SJSU MSDA Team 2}},
+  year      = {2026},
+  note      = {DATA 298B Capstone, San José State University},
+  url       = {https://github.com/BasanthPR/DATA-298-Team-2-Personalized-Education-Agent}
+}
 ```
 
 ---
 
-# Security & Privacy
+## License
 
-* Student-identifiable information is strictly separated and can be pseudonymized for demos.
-* All production deployments must use TLS and store secrets in a managed secret store (e.g., Kubernetes Secrets backed by HashiCorp Vault).
-* Access control via role-based JWT claims and fine-grained ACL checks in the API gateway.
-
-Note: This demo repo includes mock data only. Never import real student PII into demo or public repos.
-
----
-
-# Contributing & Roadmap
-
-We keep a small contributor-friendly process for the demo:
-
-* Create tickets in `issues/` and open a PR to `develop`
-* All PRs must have at least one reviewer and a passing CI run
-
-Roadmap highlights (fake/demo):
-
-1. Multi-modal tracing (include voice interactions)
-2. Self-assessment & reflection prompts
-3. Offline curriculum planner and export to LMS (LTI support)
-
----
-
-# Demo Scripts & Examples
-
-**Simulate a student run:**
-
-```bash
-python samples/simulate_students.py --n 50 --policy adaptive
-```
-
-**Generate a content sample (local, mock LLM):**
-
-```bash
-curl -X POST http://localhost:8001/generate -H "Authorization: Bearer $DEV_KEY" -d '{"skill": "algebra_linear_eq", "difficulty": 0.4 }'
-```
-
-**Export teacher report (CSV):**
-
-```bash
-python services/api-gateway/scripts/export_teacher_report.py --class-id 101 --out report_class_101.csv
-```
-
----
-
-
----
-
-# License
-
-This demo repository is provided for educational and portfolio purposes. Use under the `MIT` license (fake/demo).
-
----
-
-# Frequently Asked Questions
-
-**Q: Is this production-ready?**
-A: This repo is a polished demo intended for portfolio and academic demonstration. Productionizing requires rigorous security, privacy, and assessment validation.
-
-**Q: Can I replace the LLM with an internal model?**
-A: Yes — the content-service contains an adapter layer so you can plug external LLM endpoints or local mock generators.
-
----
-
-# Acknowledgements & References
-
-Project brief and design notes were inspired by an academic project brief (T2.A2) provided with this submission.
-
-
+MIT — see [LICENSE](LICENSE) for details.

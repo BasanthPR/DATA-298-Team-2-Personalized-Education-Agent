@@ -1,0 +1,81 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Local databases and uploads
+*.db
+*.db-journal
+Backend/uploads/
+Backend/prisma/dev.db
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor metadata
+.vscode/
+.idea/
+
+# Claude Code internal state
+.claude/
+
+# Build outputs
+dist/
+build/
+.next/
+*.egg-info/
+
+# Model weights — large binary artifacts; distribute via HuggingFace Hub
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+training_args.bin
+"Model Comparison/"
+"Model Comparison 2/"
+"Model Comparison 3/"
+Model\ Comparison/
+Model\ Comparison\ 2/
+Model\ Comparison\ 3/
+mistral_7b_cs_agent_results/
+deepseek_final_adapter/
+
+# Research data and evaluation output — not for public distribution
+reward_evaluation_results.csv
+*.xlsx
+
+# Nested repository — managed separately
+EducationAgent_1/
+EducationAgent_1.zip
+
+# Media and proprietary documents
+*.mov
+*.mp4
+*.docx
+*.pdf
+*.pptx
+
+# Allow official project docs
+!docs/*.pdf
+
+# Internal handover and deployment planning documents
+Frontend_Handover_Basanth.md
+Report/
+Team2_Deployment_Plan_v4*
+"DATA 298B - Final Report*"
+"298B Project - Peer Review*"
+"Personalized Education platform Poster*"
+"Hazard modeling table*"
+"Screen Recording*"
+
+# Airflow development artifacts
+ETL/.astro/
+ETL/logs/
