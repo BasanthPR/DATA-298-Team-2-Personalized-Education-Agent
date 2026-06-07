@@ -4,7 +4,6 @@
 
 [![Report](https://img.shields.io/badge/docs-Final_Report-blue)](docs/Final_Report.pdf)
 [![Poster](https://img.shields.io/badge/docs-Poster-green)](docs/Poster.pdf)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Deploy: Render](https://img.shields.io/badge/deploy-Render-46E3B7)](https://render.com)
 [![Inference: Modal](https://img.shields.io/badge/inference-Modal_A10G-purple)](https://modal.com)
 
@@ -355,8 +354,3 @@ If you reference this work, please cite:
 }
 ```
 
----
-
-## License
-
-MIT — see [LICENSE](LICENSE) for details.
