@@ -9,11 +9,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-COPY . .
-
-# Generate Prisma client for the container OS
+COPY prisma ./prisma
 RUN npx prisma generate
+
+COPY . .
 
 EXPOSE 4000
 
-CMD ["sh", "start.sh"]
+# Run migrations (idempotent) then start the server
+CMD ["sh", "-c", "mkdir -p /data/prisma && npx prisma migrate deploy && node index.js"]

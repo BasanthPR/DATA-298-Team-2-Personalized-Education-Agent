@@ -1,5 +1,4 @@
-require('dotenv').config({ path: '../Frontend/.env' });
-require('dotenv').config(); // also load .env from Backend/ if present
+require('dotenv').config(); // Loads Backend/.env
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');

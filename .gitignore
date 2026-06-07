@@ -27,6 +27,9 @@ Thumbs.db
 # Claude Code internal state
 .claude/
 
+# Jupyter Notebook
+.ipynb_checkpoints
+
 # Build outputs
 dist/
 build/
